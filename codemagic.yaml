@@ -1,0 +1,29 @@
+workflows:
+  ios-build:
+    name: iOS Build
+    max_build_duration: 60
+    environment:
+      xcode: latest
+      vars:
+        BUNDLE_ID: ${BUNDLE_ID}
+    scripts:
+      - name: Install Unity Hub
+        script: |
+          brew install --cask unity-hub
+      - name: Install Unity version
+        script: |
+          unity-hub --headless install --version 2022.3.11f1
+      - name: Activate Unity license
+        script: |
+          echo "$UNITY_LICENSE" | base64 --decode > Unity.ulf
+          /Applications/Unity/Hub/Editor/2022.3.11f1/Unity.app/Contents/MacOS/Unity -quit -batchmode -nographics -manualLicenseFile Unity.ulf
+      - name: Build iOS
+        script: |
+          /Applications/Unity/Hub/Editor/2022.3.11f1/Unity.app/Contents/MacOS/Unity -projectPath . -buildTarget iOS -executeMethod BuildScript.PerformiOSBuild -quit -batchmode -nographics
+    publishing:
+      email:
+        recipients:
+          - your@email.com
+    artifacts:
+      - path: "Build/*.ipa"
+        type: ipa
