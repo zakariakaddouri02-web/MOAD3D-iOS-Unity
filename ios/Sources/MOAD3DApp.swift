@@ -151,7 +151,7 @@ final class ScanViewModel: ObservableObject {
 
             let session = try PhotogrammetrySession(input: stagingFolder)
             let request = PhotogrammetrySession.Request.modelFile(url: outputURL, detail: .reduced)
-            session.process(requests: [request])
+            try session.process(requests: [request])
 
             var completedURL: URL?
             outputLoop: for try await output in session.outputs {
