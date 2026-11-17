@@ -286,7 +286,7 @@ private final class ScanFrameCapture: NSObject, ARSessionDelegate {
         let ciImage = CIImage(cvPixelBuffer: frame.capturedImage)
         guard let jpeg = ciContext.jpegRepresentation(of: ciImage,
                                                      colorSpace: CGColorSpaceCreateDeviceRGB(),
-                                                     options: [.lossyCompressionQuality: 0.9]) else { return }
+                                                     options: [:]) else { return }
 
         stateLock.lock()
         currentCount += 1
@@ -307,7 +307,7 @@ private final class ScanFrameCapture: NSObject, ARSessionDelegate {
         Task { @MainActor [weak self] in self?.onPhotoCount?(index) }
         writerQueue.async { [weak self] in
             do {
-                try jpeg.write(to: imageURL, options: .atomic)
+                try jpeg.write(to: imageURL, options: Data.WritingOptions.atomic)
                 var line = try JSONEncoder().encode(record)
                 line.append(0x0A)
                 let handle = try FileHandle(forWritingTo: poseURL)
