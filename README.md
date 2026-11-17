@@ -1,6 +1,6 @@
 # MOAD 3D Scan for iOS
 
-Unity iOS starter project for camera-only scanning. The first build target is an iPhone app that captures real camera frames and ARKit camera poses without requiring LiDAR, and writes them locally. It does **not** yet reconstruct those images into a mesh or export GLB.
+Unity iOS starter project for camera-based scanning. It captures camera frames and ARKit camera poses and stores them locally. The app now includes a basic interactive 3D viewer for local Wavefront OBJ meshes.
 
 ## Current state
 
@@ -8,13 +8,17 @@ Unity iOS starter project for camera-only scanning. The first build target is an
 - Runtime-created starter UI has Start scan, Stop, Flash, photo count, progress, and movement guidance controls.
 - Capture saves up to 150 JPEG frames and a `camera_poses.jsonl` record under `Application.persistentDataPath/MOAD3D/Captures/`.
 - The scanner uses ARKit world tracking for camera pose estimates; LiDAR is not enabled or required by this project.
-- The processing stage is not implemented yet. A saved photo set is not a mesh, and the app does not currently offer GLB export or a model viewer.
+- The 3D Model button opens an interactive OBJ viewer with drag-to-rotate and pinch/scroll-to-zoom controls.
+- On iOS, the viewer's **Import OBJ** button opens Files and copies the selected model into `Application.persistentDataPath/MOAD3D/Models/model.obj`.
+- The capture pipeline does not yet generate a mesh, capture stereo depth, or export GLB. Viewing an OBJ is separate from scanning/reconstruction.
 
 ## Mesh reconstruction without LiDAR
 
-The intended workflow is on-device photogrammetry: match visual features across the saved photos, estimate camera poses, build a dense point cloud, then reconstruct and texture a mesh. The iOS starter captures camera poses but does not contain that pipeline yet.
+The intended workflow is on-device photogrammetry: match visual features across saved photos, estimate camera poses, build a dense point cloud, then reconstruct and texture a mesh. The iOS capture app does not contain that pipeline yet.
 
-Apple's RealityKit Object Capture reconstruction is available only on select iOS devices with LiDAR, so it is not a general solution for camera-only iPhones. OpenMVG can provide Structure from Motion components and is MPL-2.0, but it does not alone provide the complete dense textured mesh pipeline. OpenMVS provides dense reconstruction and mesh stages but is AGPL-3.0 and has no ready-to-use iOS build in this project. A compatible engine still needs to be ported, integrated, and verified on physical non-LiDAR iPhones before this app can claim end-to-end offline scanning.
+On an iPhone 12 Pro Max, AVFoundation can provide relative depth from the rear dual-camera system in supported capture formats; this is stereo disparity, not LiDAR depth. Apple documents that dual-camera depth has relative accuracy. This project has not yet integrated that capture path, so the current scanner still saves RGB frames and ARKit poses only. A compatible RGB-D or photogrammetry reconstruction engine still needs to be integrated and tested on the phone before the app can claim end-to-end offline scanning.
+
+The viewer currently parses OBJ vertex and face data and uses a simple shaded material. It does not import OBJ materials or texture files. The scan pipeline does not yet create the OBJ file; import an existing OBJ from Files to use the viewer.
 
 ## Build with Codemagic
 
@@ -40,6 +44,7 @@ Open the repository root in Unity `2022.3.11f1` with the iOS Build Support modul
 ## References
 
 - [Apple: Creating 3D objects from photographs](https://developer.apple.com/documentation/realitykit/creating-3d-objects-from-photographs)
+- [Apple: Capturing photos with depth](https://developer.apple.com/documentation/avfoundation/capturing-photos-with-depth)
 - [OpenMVG](https://github.com/openMVG/openMVG) — Structure from Motion library, MPL-2.0
 - [OpenMVS](https://github.com/cdcseacave/openMVS) — dense reconstruction and mesh library, AGPL-3.0
 - [Codemagic: Unity apps](https://docs.codemagic.io/yaml-quick-start/building-a-unity-app/)
