@@ -1,23 +1,21 @@
-# Install a MOAD iOS build with AltServer
+# Build and sideload MOAD 3D Scan
 
-## 1. Build the IPA in Codemagic
+## Build the iOS app
 
-Run the `ios-build` workflow and download `MOAD3D-unsigned.ipa` from its artifacts.
+Run the `ios-build` Codemagic workflow. It compiles the native Swift/Xcode project and produces `MOAD3D-unsigned.ipa`. No Unity Editor, Unity account, or Unity license secrets are used by this workflow.
 
-The Unity activation step must finish before Codemagic can generate the Xcode project. Codemagic's Unity CI documentation requires a Unity Plus or Pro license. Add the account email, password, and matching license serial as secret variables `UNITY_EMAIL`, `UNITY_PASSWORD`, and `UNITY_SERIAL` in the `unity_credentials` group.
+## Install with AltServer
 
-If the log says `UnityConnectLoginRequest: Failed to login` or returns HTTP `401`, the Unity credentials were rejected. Check the Unity ID email/password and the serial assigned to that account in Codemagic's secret group. Do not paste secrets into GitHub or the build log. AltServer cannot fix this build-stage error because no IPA exists yet.
+1. Download the IPA from Codemagic build artifacts.
+2. Install and open AltServer on Windows or Mac.
+3. Connect the iPhone and trust the computer if prompted.
+4. Hold **Shift** on Windows or **Option** on Mac while clicking the AltServer icon.
+5. Choose **Sideload .ipa…**, select `MOAD3D-unsigned.ipa`, and follow the prompts to sign and install with your Apple ID.
 
-## 2. Sign and install with AltServer
+See the official [AltServer guide](https://faq.altstore.io/altstore-classic/altserver) and [Windows](https://faq.altstore.io/altstore-classic/how-to-install-altstore-windows) or [macOS](https://faq.altstore.io/altstore-classic/how-to-install-altstore-macos) setup instructions. Free Apple ID sideloading requires periodic refresh.
 
-The workflow creates an unsigned development IPA. On Windows or Mac, install and open AltServer, connect the iPhone, and trust the computer if prompted. Hold **Shift** on Windows or **Option** on Mac while clicking the AltServer icon, choose **Sideload .ipa…**, select `MOAD3D-unsigned.ipa`, then follow the prompts to sign and install it with your Apple ID. With a free Apple ID, the app needs to be refreshed about every 7 days. ([AltServer guide](https://faq.altstore.io/altstore-classic/altserver)) The unsigned IPA is not ready for TestFlight or the App Store.
+## Scan and preview
 
-Use the official [AltStore Windows installation guide](https://faq.altstore.io/altstore-classic/how-to-install-altstore-windows) or [AltStore macOS installation guide](https://faq.altstore.io/altstore-classic/how-to-install-altstore-macos).
+Open MOAD 3D Scan, start scanning, and move slowly around a static object with visible texture. Stop after 20 or more overlapping photos, tap **Build 3D**, then tap **Preview 3D model**. The image-based reconstruction runs locally when Apple's RealityKit reports the device as supported. Behavior with faulty LiDAR hardware still needs confirmation on the iPhone 12 Pro Max.
 
-## App flow
-
-After installing, open MOAD 3D Scan, start a scan, move slowly around a textured object, then stop after at least 20 photos or let it reach 150. Tap **Build 3D Model** to reconstruct locally, then **3D Model** to view the result. Image-based reconstruction runs only when RealityKit reports support on the iPhone; this workflow still needs a successful device build and scan to confirm behavior with a faulty LiDAR sensor.
-
-## Apple distribution
-
-For TestFlight or the App Store, configure Apple signing and provisioning in Codemagic and create a separate signed workflow. AltServer sideloading does not publish the app.
+For TestFlight or App Store distribution, configure Apple signing and provisioning in Codemagic and create a signed workflow. The unsigned AltServer IPA is for development sideloading only.

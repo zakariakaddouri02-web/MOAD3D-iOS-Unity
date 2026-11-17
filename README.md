@@ -1,53 +1,44 @@
 # MOAD 3D Scan for iOS
 
-Unity iOS app for object scanning from the rear RGB camera. It captures photos and reconstructs a 3D object on supported iPhones, then opens the result in the in-app viewer.
+Native SwiftUI iPhone app. The Codemagic workflow builds the Xcode project directly; it does not install or activate Unity.
 
-## Current state
+## Scan flow
 
-- Codemagic workflow generates an iOS Xcode project and packages an unsigned IPA for sideloading.
-- Runtime-created starter UI has Start scan, Stop, Flash, photo count, progress, and movement guidance controls.
-- Capture saves up to 150 JPEG frames and a `camera_poses.jsonl` record under `Application.persistentDataPath/MOAD3D/Captures/`.
-- The scanner uses ARKit world tracking for camera pose estimates; LiDAR is not enabled or required by this project.
-- **Build 3D Model** runs Apple's on-device RealityKit photogrammetry from the captured photos. It writes a USDZ model, then Model I/O exports an OBJ copy for the in-app viewer.
-- The 3D Model button opens an interactive OBJ viewer with drag-to-rotate and pinch/scroll-to-zoom controls.
-- On iOS, the viewer's **Import OBJ** button opens Files and copies the selected model into `Application.persistentDataPath/MOAD3D/Models/model.obj`.
-- Reconstruction requires at least 20 photos; capture overlapping, sharp views around the entire object for better results.
-- The app does not capture stereo depth or export GLB. It creates an image-based photogrammetry mesh.
+1. Open MOAD 3D Scan and allow camera access.
+2. Tap **Start scan** and move slowly around a static, textured object. Keep views sharp with substantial overlap.
+3. Tap **Stop** after at least 20 photos; capture can collect up to 150.
+4. Tap **Build 3D**. RealityKit photogrammetry processes the saved rear-camera photos on the iPhone and saves a USDZ model.
+5. Tap **Preview 3D model** to inspect and rotate the USDZ model with Apple's Quick Look viewer.
 
-## Image-based reconstruction on iPhone
+Photos and camera poses are stored locally under `Documents/MOAD3D/Captures/`. Generated USDZ files are stored under `Documents/MOAD3D/Models/`. Reconstruction does not upload scans or use network services.
 
-On an iPhone 12 Pro Max, reconstruction uses the rear RGB images and RealityKit photogrammetry, not a LiDAR depth stream. Apple's API is restricted to select LiDAR-capable iPhones; the app checks `PhotogrammetrySession.isSupported` before starting. Whether this API succeeds on a particular phone with a failed LiDAR sensor still needs confirmation from a device run.
+## LiDAR and device support
 
-The viewer parses OBJ vertex and face data and uses a simple shaded material. It does not import OBJ materials or texture files. The source USDZ model is also saved under `Application.persistentDataPath/MOAD3D/Models/`.
+Capture uses the rear RGB camera and ARKit camera tracking. It does not request LiDAR depth or rear stereo depth. RealityKit's on-device Object Capture API is available only on select LiDAR-capable Apple devices, and this app checks `PhotogrammetrySession.isSupported` before reconstruction. Apple's reconstruction request uses the captured photographs, but the API's behavior on an iPhone whose LiDAR hardware is faulty has not yet been verified on that device. If the runtime reports unsupported or reconstruction fails, capture still saves the photo set locally.
+
+The iPhone 12 Pro Max uses an A14 chip and includes LiDAR hardware, so it is a model worth testing with this image-based workflow. The camera can still track with ARKit without using LiDAR. Final confirmation requires a device build and a complete scan on the phone.
+
+Photogrammetry works best with a static object that has visible texture, diffuse lighting, sharp frames, and at least 70% overlap between adjacent views. Reflective, transparent, plain, moving, or poorly lit objects may fail or produce holes. On iOS, RealityKit generates reduced-detail models for mobile viewing.
 
 ## Build with Codemagic
 
+The `ios-build` workflow builds `MOAD3D.xcodeproj` using Xcode and packages `MOAD3D-unsigned.ipa`. It requires no Unity account or Unity license. The IPA is unsigned for AltServer sideloading and is not ready for TestFlight or the App Store. This native workflow has not yet been run successfully in Codemagic or on a physical iPhone.
+
 1. Add this GitHub repository to Codemagic.
-2. In Codemagic, create the `unity_credentials` secret group with `UNITY_EMAIL`, `UNITY_PASSWORD`, and `UNITY_SERIAL` for a valid Unity Plus or Pro license. Codemagic's current Unity build guide requires Plus or Pro for cloud builds.
-3. Run the `ios-build` workflow from `codemagic.yaml`.
-4. Download `MOAD3D-unsigned.ipa` from build artifacts and sign/install it with your iOS sideloading workflow. An unsigned IPA is not an App Store or TestFlight release.
+2. Run the `ios-build` workflow.
+3. Download `MOAD3D-unsigned.ipa` from the build artifacts.
+4. On Windows, connect the iPhone and hold **Shift** while clicking AltServer; choose **Sideload .ipa…** and select the IPA. On Mac, hold **Option** while clicking AltServer. Sign with your Apple ID.
 
-The workflow uses Unity `2022.3.11f1` and produces an iOS device archive with code signing disabled. It has not yet been verified by a successful Codemagic run. To publish to TestFlight or the App Store, add App Store Connect signing credentials and a signed IPA workflow.
+Free Apple ID sideloads need periodic refresh. See [AltServer's guide](https://faq.altstore.io/altstore-classic/altserver) and the [AltStore Windows](https://faq.altstore.io/altstore-classic/how-to-install-altstore-windows) or [macOS](https://faq.altstore.io/altstore-classic/how-to-install-altstore-macos) installation guide.
 
-If Unity activation stops with HTTP `401`, Codemagic has rejected the email/password credentials before it can generate the Xcode project. Check the Unity ID email/password and confirm the serial belongs to that account in the Codemagic secret group. The AltServer install step only applies after a successful IPA build.
+To distribute through TestFlight or the App Store, configure Apple signing and provisioning in Codemagic, then use a signed archive workflow.
 
-## Local project
+## Build locally
 
-Open the repository root in Unity `2022.3.11f1` with the iOS Build Support module installed. Unity resolves packages from `Packages/manifest.json`. The build script creates a minimal capture scene when it does not exist.
-
-## Device limitations
-
-- Requires an ARKit-capable iPhone and a device where RealityKit Object Capture reports support for on-device reconstruction.
-- The user still needs to move around the object and capture overlapping, sharp views with useful texture and lighting.
-- Flash availability depends on the physical iPhone model. The torch is controlled through a small AVFoundation bridge.
-- Reflective, transparent, textureless, moving, or poorly lit subjects are difficult for photogrammetry.
-- Reconstruction can be slow and may fail on photos with too little overlap, blur, reflections, transparency, low texture, or changing lighting.
+Open `MOAD3D.xcodeproj` in Xcode 16 or later and build for an iPhone running iOS 17 or later. The app uses only Apple frameworks: SwiftUI, ARKit, RealityKit, AVFoundation, and Quick Look.
 
 ## References
 
 - [Apple: Creating 3D objects from photographs](https://developer.apple.com/documentation/realitykit/creating-3d-objects-from-photographs)
-- [Apple: Object Capture availability and workflow](https://developer.apple.com/documentation/realitykit/realitykit-object-capture)
-- [Apple: Capturing photographs for RealityKit Object Capture](https://developer.apple.com/documentation/realitykit/capturing-photographs-for-realitykit-object-capture/)
-- [OpenMVG](https://github.com/openMVG/openMVG) — Structure from Motion library, MPL-2.0
-- [OpenMVS](https://github.com/cdcseacave/openMVS) — dense reconstruction and mesh library, AGPL-3.0
-- [Codemagic: Unity apps](https://docs.codemagic.io/yaml-quick-start/building-a-unity-app/)
+- [Apple: Object Capture workflow](https://developer.apple.com/documentation/realitykit/realitykit-object-capture)
+- [Codemagic: Xcode projects](https://docs.codemagic.io/yaml-quick-start/building-a-native-ios-app/)
