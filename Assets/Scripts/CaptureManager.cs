@@ -7,9 +7,7 @@ using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
 
 /// <summary>
-/// Captures real camera frames and camera poses without requiring LiDAR.
-/// This produces a photogrammetry input set; a separate reconstruction engine
-/// must turn that set into a mesh.
+/// Captures camera frames and ARKit poses to create an image set for on-device photogrammetry.
 /// </summary>
 public class CaptureManager : MonoBehaviour
 {
@@ -20,6 +18,7 @@ public class CaptureManager : MonoBehaviour
     public Text statusText;
 
     public const int TARGET_PHOTOS = 150;
+    public const int MIN_PHOTOS_FOR_RECONSTRUCTION = 20;
     public const long MIN_PHOTO_INTERVAL_MS = 350;
 
     public event Action<string> ScanCaptured;
@@ -87,6 +86,10 @@ public class CaptureManager : MonoBehaviour
         isCapturing = false;
         SetHud(false);
         SetStatus($"Capture stopped. {currentPhotos} photos saved.");
+        if (currentPhotos >= MIN_PHOTOS_FOR_RECONSTRUCTION)
+            ScanCaptured?.Invoke(scanFolder);
+        else if (currentPhotos > 0)
+            SetStatus($"Saved {currentPhotos} photos. Capture at least {MIN_PHOTOS_FOR_RECONSTRUCTION} to build a 3D model.");
     }
 
     private void Update()
@@ -223,7 +226,7 @@ public class CaptureManager : MonoBehaviour
     {
         isCapturing = false;
         SetHud(false);
-        SetStatus($"Saved {currentPhotos} photos. Reconstruction is the next step.");
+        SetStatus($"Saved {currentPhotos} photos. Build your 3D model when ready.");
         ScanCaptured?.Invoke(scanFolder);
     }
 

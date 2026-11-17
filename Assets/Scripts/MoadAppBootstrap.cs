@@ -32,12 +32,23 @@ public class MoadAppBootstrap : MonoBehaviour
         capture.speedText = speed;
         capture.statusText = status;
 
+        GameObject reconstructionObject = new GameObject("Reconstruction Controller");
+        ScanReconstructionController reconstruction = reconstructionObject.AddComponent<ScanReconstructionController>();
+        Button reconstructButton = CreateButton(canvas.transform, "Build 3D Model", new Vector2(0.29f, 0.20f),
+            new Vector2(0.71f, 0.29f), reconstruction.StartReconstruction);
+
         CreateButton(canvas.transform, "Start 150-photo scan", new Vector2(0.08f, 0.08f),
-            new Vector2(0.48f, 0.17f), capture.Start150PhotoMode);
+            new Vector2(0.48f, 0.17f), () =>
+            {
+                reconstruction.ClearInputFolder();
+                capture.Start150PhotoMode();
+            });
         CreateButton(canvas.transform, "Stop", new Vector2(0.52f, 0.08f),
             new Vector2(0.72f, 0.17f), capture.CancelCapture);
+        capture.ScanCaptured += reconstruction.SetInputFolder;
 
         GameObject viewerPanel = CreateModelViewer(canvas.transform, out ObjModelViewer modelViewer);
+        reconstruction.Configure(status, reconstructButton, modelViewer);
         CreateButton(canvas.transform, "3D Model", new Vector2(0.68f, 0.86f),
             new Vector2(0.94f, 0.94f), () =>
             {
@@ -205,7 +216,7 @@ public class MoadAppBootstrap : MonoBehaviour
         return slider;
     }
 
-    private static void CreateButton(Transform parent, string label, Vector2 anchorMin,
+    private static Button CreateButton(Transform parent, string label, Vector2 anchorMin,
         Vector2 anchorMax, UnityEngine.Events.UnityAction onClick)
     {
         GameObject buttonObject = new GameObject(label + " Button");
@@ -223,5 +234,6 @@ public class MoadAppBootstrap : MonoBehaviour
         Text text = CreateText(buttonObject.transform, "Label", 20, TextAnchor.MiddleCenter,
             Vector2.zero, Vector2.one);
         text.text = label;
+        return button;
     }
 }

@@ -23,7 +23,7 @@ public static class BuildScript
         PlayerSettings.companyName = "MOAD";
         PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.iOS, BundleId);
         PlayerSettings.iOS.cameraUsageDescription = "MOAD 3D Scan uses the camera to capture images for your 3D scan.";
-        PlayerSettings.iOS.targetOSVersionString = "13.0";
+        PlayerSettings.iOS.targetOSVersionString = "17.0";
         PlayerSettings.SetScriptingBackend(BuildTargetGroup.iOS, ScriptingImplementation.IL2CPP);
         PlayerSettings.iOS.appleEnableAutomaticSigning = false;
         ConfigureARKitLoader();
@@ -42,7 +42,7 @@ public static class BuildScript
     }
 
     [PostProcessBuild(1)]
-    public static void LinkTorchFramework(BuildTarget target, string buildPath)
+    public static void ConfigureIOSNativeFrameworks(BuildTarget target, string buildPath)
     {
         if (target != BuildTarget.iOS)
             return;
@@ -51,7 +51,21 @@ public static class BuildScript
         PBXProject project = new PBXProject();
         project.ReadFromFile(projectPath);
         string frameworkTarget = project.GetUnityFrameworkTargetGuid();
+        string appTarget = project.GetUnityMainTargetGuid();
         project.AddFrameworkToProject(frameworkTarget, "AVFoundation.framework", false);
+        project.AddFrameworkToProject(frameworkTarget, "RealityKit.framework", false);
+        project.AddFrameworkToProject(frameworkTarget, "ModelIO.framework", false);
+
+        string swiftSource = Path.Combine(Application.dataPath, "Plugins/iOS/MOADPhotogrammetry.swift");
+        string swiftDirectory = Path.Combine(buildPath, "Libraries/Plugins/iOS");
+        Directory.CreateDirectory(swiftDirectory);
+        string swiftDestination = Path.Combine(swiftDirectory, "MOADPhotogrammetry.swift");
+        File.Copy(swiftSource, swiftDestination, true);
+        string swiftGuid = project.AddFile("Libraries/Plugins/iOS/MOADPhotogrammetry.swift",
+            "Libraries/Plugins/iOS/MOADPhotogrammetry.swift", PBXSourceTree.Source);
+        project.AddFileToBuild(frameworkTarget, swiftGuid);
+        project.SetBuildProperty(frameworkTarget, "SWIFT_VERSION", "5.0");
+        project.SetBuildProperty(appTarget, "ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES", "YES");
         project.WriteToFile(projectPath);
     }
 
