@@ -1,29 +1,46 @@
 workflows:
   ios-build:
-    name: iOS Build
-    max_build_duration: 60
+    name: MOAD 3D Scan iOS (unsigned)
+    max_build_duration: 120
     environment:
+      unity: 2022.3.11f1
       xcode: latest
+      groups:
+        - unity_credentials
       vars:
-        BUNDLE_ID: ${BUNDLE_ID}
+        BUNDLE_ID: com.moad.moad3dscan
+        UNITY_IOS_DIR: build/ios
+        XCODE_PROJECT: Unity-iPhone.xcodeproj
+        XCODE_SCHEME: Unity-iPhone
     scripts:
-      - name: Install Unity Hub
-        script: |
-          brew install --cask unity-hub
-      - name: Install Unity version
-        script: |
-          unity-hub --headless install --version 2022.3.11f1
       - name: Activate Unity license
         script: |
-          echo "$UNITY_LICENSE" | base64 --decode > Unity.ulf
-          /Applications/Unity/Hub/Editor/2022.3.11f1/Unity.app/Contents/MacOS/Unity -quit -batchmode -nographics -manualLicenseFile Unity.ulf
-      - name: Build iOS
+          "$UNITY_HOME/Contents/MacOS/Unity" -batchmode -quit -logFile - \
+            -serial "$UNITY_SERIAL" \
+            -username "$UNITY_EMAIL" \
+            -password "$UNITY_PASSWORD"
+      - name: Generate the iOS Xcode project
         script: |
-          /Applications/Unity/Hub/Editor/2022.3.11f1/Unity.app/Contents/MacOS/Unity -projectPath . -buildTarget iOS -executeMethod BuildScript.PerformiOSBuild -quit -batchmode -nographics
-    publishing:
-      email:
-        recipients:
-          - your@email.com
+          "$UNITY_HOME/Contents/MacOS/Unity" -batchmode -quit -nographics -logFile - \
+            -projectPath . \
+            -executeMethod BuildScript.BuildIOS
+      - name: Build unsigned iOS app
+        script: |
+          xcodebuild \
+            -project "$UNITY_IOS_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/MOAD3D.xcarchive \
+            archive CODE_SIGNING_ALLOWED=NO
+      - name: Package unsigned IPA for AltStore
+        script: |
+          APP_PATH="$(find build/MOAD3D.xcarchive/Products/Applications -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          mkdir -p build/ipa/Payload
+          cp -R "$APP_PATH" build/ipa/Payload/
+          cd build/ipa
+          /usr/bin/zip -qry ../MOAD3D-unsigned.ipa Payload
     artifacts:
-      - path: "Build/*.ipa"
-        type: ipa
+      - build/MOAD3D-unsigned.ipa

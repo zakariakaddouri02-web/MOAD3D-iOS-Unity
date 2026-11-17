@@ -1,51 +1,45 @@
-# MOAD 3D SCAN – iOS (Unity) Project
+# MOAD 3D Scan for iOS
 
-This Unity project implements the same core features as the Android version **without LiDAR**:
-- **Flash toggle** (torch) using `AVCaptureDevice`.
-- **150‑photo capture mode** with auto‑stop and HUD.
-- **GLB export** of the reconstructed mesh (uses `UnityGLTF` library).
-- **UI**: simple overlay with three buttons (Flash, 150 Photos, Export GLB).
-- **No external network** – all data stays on‑device.
+Unity iOS starter project for camera-only scanning. The first build target is an iPhone app that captures real camera frames and ARKit camera poses without requiring LiDAR, and writes them locally. It does **not** yet reconstruct those images into a mesh or export GLB.
 
-## Project structure (generated)
-```
-MOAD3D_iOS_Unity/
-├─ Assets/
-│  └─ Scripts/
-│     ├─ CaptureManager.cs      # Handles ARKit session, photo capture, counter
-│     ├─ FlashToggle.cs         # Torch control
-│     └─ GLBExporter.cs         # Converts Unity mesh to GLB and saves to Documents/MOAD3D
-├─ Packages/
-│  └─ manifest.json            # Unity package manifest (includes UnityGLTF)
-├─ ProjectSettings/
-│  └─ ProjectSettings.asset    # Minimal Unity project settings (iOS platform)
-└─ README.md                    # This file
-```
+## Current state
 
-## How to build for iOS from Windows
-1. **Upload the folder** to a cloud‑build service that supports Unity iOS builds (e.g., Unity Cloud Build, GameCI, or a CI service with a macOS runner).
-2. Configure the build target:
-   - Platform: **iOS**
-   - Architecture: **ARM64**
-   - Scripting Backend: **IL2CPP** (default for iOS)
-   - **Apple Developer** credentials must be supplied to the service for signing.
-3. Trigger the build – the service will produce an `.ipa` file.
-4. Download the `.ipa` and install it on your iPhone via **TestFlight**, **Diawi**, or **Apple Configurator**.
+- Codemagic workflow generates an iOS Xcode project and packages an unsigned IPA for sideloading.
+- Runtime-created starter UI has Start scan, Stop, Flash, photo count, progress, and movement guidance controls.
+- Capture saves up to 150 JPEG frames and a `camera_poses.jsonl` record under `Application.persistentDataPath/MOAD3D/Captures/`.
+- The scanner uses ARKit world tracking for camera pose estimates; LiDAR is not enabled or required by this project.
+- The processing stage is not implemented yet. A saved photo set is not a mesh, and the app does not currently offer GLB export or a model viewer.
 
-## Usage on the device
-- Launch the app – it immediately requests Camera permission.
-- **⚡ Flash** button toggles the torch.
-- **🎯 150 Photos** starts the capture mode; a HUD shows count and a progress bar. Capturing stops automatically at 150 images.
-- **💾 Export GLB** creates `scan_YYYYMMDD_HHMMSS.glb` in the app’s `Documents/MOAD3D/` folder and opens the iOS share sheet.
+## Mesh reconstruction without LiDAR
 
-## Dependencies
-- **ARFoundation** (v5.2+) – provides ARKit session without LiDAR.
-- **UnityGLTF** (latest) – for GLB generation.
-- No external network libraries are used.
+The intended workflow is on-device photogrammetry: match visual features across the saved photos, estimate camera poses, build a dense point cloud, then reconstruct and texture a mesh. The iOS starter captures camera poses but does not contain that pipeline yet.
 
-## Extending / customizing
-- To change the capture interval, edit `CaptureManager.MIN_PHOTO_INTERVAL_MS`.
-- To add a UI slider for speed guidance, modify the HUD in `CaptureManager`.
+Apple's RealityKit Object Capture reconstruction is available only on select iOS devices with LiDAR, so it is not a general solution for camera-only iPhones. OpenMVG can provide Structure from Motion components and is MPL-2.0, but it does not alone provide the complete dense textured mesh pipeline. OpenMVS provides dense reconstruction and mesh stages but is AGPL-3.0 and has no ready-to-use iOS build in this project. A compatible engine still needs to be ported, integrated, and verified on physical non-LiDAR iPhones before this app can claim end-to-end offline scanning.
 
----
-*All source files are located under the artifact directory; you can download the whole project as a zip (see `MOAD3D_iOS_Unity.zip`).*
+## Build with Codemagic
+
+1. Add this GitHub repository to Codemagic.
+2. In the Codemagic app's environment variable groups, create `unity_credentials` and add secret variables `UNITY_EMAIL`, `UNITY_PASSWORD`, and `UNITY_SERIAL` for a Unity license that can activate on a CI machine.
+3. Run the `ios-build` workflow from `codemagic.yaml`.
+4. Download `MOAD3D-unsigned.ipa` from build artifacts and sign/install it with your iOS sideloading workflow. An unsigned IPA is not an App Store or TestFlight release.
+
+The workflow uses Unity `2022.3.11f1` and produces an iOS device archive with code signing disabled. It has not yet been verified by a successful Codemagic run. To publish to TestFlight or the App Store, add App Store Connect signing credentials and a signed IPA workflow.
+
+## Local project
+
+Open the repository root in Unity `2022.3.11f1` with the iOS Build Support module installed. Unity resolves packages from `Packages/manifest.json`. The build script creates a minimal capture scene when it does not exist.
+
+## Device limitations
+
+- Requires an ARKit-capable iPhone for camera pose tracking; this is not LiDAR mesh reconstruction.
+- The user still needs to move around the object and capture overlapping, sharp views with useful texture and lighting.
+- Flash availability depends on the physical iPhone model. The torch is controlled through a small AVFoundation bridge.
+- Reflective, transparent, textureless, moving, or poorly lit subjects are difficult for photogrammetry.
+- Until an on-device reconstruction engine is added, this project is a capture/build foundation, not a complete 3D scanner.
+
+## References
+
+- [Apple: Creating 3D objects from photographs](https://developer.apple.com/documentation/realitykit/creating-3d-objects-from-photographs)
+- [OpenMVG](https://github.com/openMVG/openMVG) — Structure from Motion library, MPL-2.0
+- [OpenMVS](https://github.com/cdcseacave/openMVS) — dense reconstruction and mesh library, AGPL-3.0
+- [Codemagic: Unity apps](https://docs.codemagic.io/yaml-quick-start/building-a-unity-app/)

@@ -1,82 +1,243 @@
-using System.Collections;
-using System.Collections.Generic;
+using System;
+using System.IO;
+using Unity.Collections;
 using UnityEngine;
+using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
-using UnityEngine.UI;
 
+/// <summary>
+/// Captures real camera frames and camera poses without requiring LiDAR.
+/// This produces a photogrammetry input set; a separate reconstruction engine
+/// must turn that set into a mesh.
+/// </summary>
 public class CaptureManager : MonoBehaviour
 {
     public ARCameraManager arCameraManager;
-    public ARSession arSession;
     public Text hudCounter;
     public Slider progressBar;
     public Text speedText;
+    public Text statusText;
 
     public const int TARGET_PHOTOS = 150;
-    public const long MIN_PHOTO_INTERVAL_MS = 250;
-    private int currentPhotos = 0;
-    private long lastCaptureTime = 0;
-    private bool isCapturing = false;
-    private Vector3 lastPosition;
-    private float currentSpeed = 0f;
+    public const long MIN_PHOTO_INTERVAL_MS = 350;
 
-    void Start()
+    public event Action<string> ScanCaptured;
+
+    private int currentPhotos;
+    private long lastCaptureTime;
+    private bool isCapturing;
+    private string scanFolder;
+    private Vector3 lastPosition;
+    private Vector3 lastCapturedPosition;
+    private Quaternion lastCapturedRotation;
+    private bool hasCapturedPose;
+
+    [Serializable]
+    private class PoseRecord
     {
-        // UI setup done via Unity Editor, here we just ensure references are set
-        hudCounter.text = $"📸 Photos : 0 / {TARGET_PHOTOS}";
-        progressBar.maxValue = TARGET_PHOTOS;
+        public string image;
+        public string capturedAtUtc;
+        public float[] position;
+        public float[] rotation;
+    }
+
+    private void Start()
+    {
+        if (progressBar != null)
+        {
+            progressBar.minValue = 0;
+            progressBar.maxValue = TARGET_PHOTOS;
+            progressBar.value = 0;
+        }
+
+        SetHud(false);
+        SetStatus("Ready to scan. Move slowly around a textured object.");
     }
 
     public void Start150PhotoMode()
     {
-        isCapturing = true;
+        if (arCameraManager == null)
+        {
+            SetStatus("Camera is not ready.");
+            return;
+        }
+
         currentPhotos = 0;
         lastCaptureTime = 0;
-        hudCounter.gameObject.SetActive(true);
-        progressBar.gameObject.SetActive(true);
-        speedText.gameObject.SetActive(true);
+        lastPosition = arCameraManager.transform.position;
+        lastCapturedPosition = lastPosition;
+        lastCapturedRotation = arCameraManager.transform.rotation;
+        hasCapturedPose = false;
+        string root = Path.Combine(Application.persistentDataPath, "MOAD3D", "Captures");
+        scanFolder = Path.Combine(root, "scan_" + DateTime.Now.ToString("yyyyMMdd_HHmmss"));
+        Directory.CreateDirectory(scanFolder);
+        File.WriteAllText(Path.Combine(scanFolder, "camera_poses.jsonl"), "");
+        isCapturing = true;
+        SetHud(true);
+        SetStatus("Capturing photos. Keep moving slowly and cover every side.");
+        UpdateCounter();
     }
 
-    void Update()
+    public void CancelCapture()
     {
-        if (!isCapturing) return;
+        if (!isCapturing)
+            return;
 
-        // Simple speed estimation based on device movement
-        var pose = arSession.subsystem.GetTrackables<XRTrackable>(Allocator.Temp);
-        // For brevity we approximate speed = 0
-        currentSpeed = 0f;
-        speedText.text = $"🟢 Vitesse Idéale ({currentSpeed:F2} m/s)";
+        isCapturing = false;
+        SetHud(false);
+        SetStatus($"Capture stopped. {currentPhotos} photos saved.");
+    }
 
-        long now = System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        if (now - lastCaptureTime >= MIN_PHOTO_INTERVAL_MS && currentPhotos < TARGET_PHOTOS)
+    private void Update()
+    {
+        if (!isCapturing)
+            return;
+
+        if (ARSession.state != ARSessionState.SessionTracking)
         {
-            CapturePhoto();
+            if (speedText != null)
+                speedText.text = "Finding camera tracking… hold the iPhone steady";
+            return;
+        }
+
+        UpdateSpeedGuidance();
+
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (now - lastCaptureTime < MIN_PHOTO_INTERVAL_MS)
+            return;
+
+        Transform cameraTransform = arCameraManager.transform;
+        if (hasCapturedPose
+            && Vector3.Distance(cameraTransform.position, lastCapturedPosition) < 0.02f
+            && Quaternion.Angle(cameraTransform.rotation, lastCapturedRotation) < 3f)
+        {
+            if (speedText != null)
+                speedText.text = "Turn or move slightly to capture a new view";
+            return;
+        }
+
+        if (TryCapturePhoto())
+        {
             lastCaptureTime = now;
+            lastCapturedPosition = cameraTransform.position;
+            lastCapturedRotation = cameraTransform.rotation;
+            hasCapturedPose = true;
+            currentPhotos++;
+            UpdateCounter();
+            if (currentPhotos >= TARGET_PHOTOS)
+                FinishCapture();
         }
     }
 
-    private void CapturePhoto()
+    private bool TryCapturePhoto()
     {
-        if (arCameraManager == null) return;
-        arCameraManager.TryAcquireLatestCpuImage(out XRCpuImage image);
-        // In a real implementation we would store the image or feed it to the mesh generator.
-        currentPhotos++;
-        hudCounter.text = $"📸 Photos : {currentPhotos} / {TARGET_PHOTOS}";
-        progressBar.value = currentPhotos;
-        if (currentPhotos >= TARGET_PHOTOS)
+        if (!arCameraManager.TryAcquireLatestCpuImage(out XRCpuImage image))
+            return false;
+
+        try
         {
-            StopCapture();
+            var parameters = new XRCpuImage.ConversionParams
+            {
+                inputRect = new RectInt(0, 0, image.width, image.height),
+                outputDimensions = new Vector2Int(image.width, image.height),
+                outputFormat = TextureFormat.RGBA32,
+                transformation = XRCpuImage.Transformation.MirrorY
+            };
+
+            int dataSize = image.GetConvertedDataSize(parameters);
+            var pixelData = new NativeArray<byte>(dataSize, Allocator.Temp);
+            try
+            {
+                image.Convert(parameters, pixelData);
+                var texture = new Texture2D(parameters.outputDimensions.x, parameters.outputDimensions.y,
+                    TextureFormat.RGBA32, false);
+                texture.LoadRawTextureData(pixelData);
+                texture.Apply(false, false);
+                byte[] jpeg = texture.EncodeToJPG(88);
+                Destroy(texture);
+
+                string fileName = $"frame_{currentPhotos + 1:D4}.jpg";
+                string path = Path.Combine(scanFolder, fileName);
+                File.WriteAllBytes(path, jpeg);
+                SavePose(fileName);
+                return true;
+            }
+            finally
+            {
+                if (pixelData.IsCreated)
+                    pixelData.Dispose();
+            }
+        }
+        catch (Exception exception)
+        {
+            SetStatus("Could not save a camera frame: " + exception.Message);
+            return false;
+        }
+        finally
+        {
+            image.Dispose();
         }
     }
 
-    private void StopCapture()
+    private void SavePose(string imageName)
+    {
+        Transform cameraTransform = arCameraManager.transform;
+        PoseRecord record = new PoseRecord
+        {
+            image = imageName,
+            capturedAtUtc = DateTime.UtcNow.ToString("o"),
+            position = new[] { cameraTransform.position.x, cameraTransform.position.y, cameraTransform.position.z },
+            rotation = new[] { cameraTransform.rotation.x, cameraTransform.rotation.y,
+                cameraTransform.rotation.z, cameraTransform.rotation.w }
+        };
+        File.AppendAllText(Path.Combine(scanFolder, "camera_poses.jsonl"), JsonUtility.ToJson(record) + "\n");
+    }
+
+    private void UpdateSpeedGuidance()
+    {
+        if (speedText == null)
+            return;
+
+        Vector3 position = arCameraManager.transform.position;
+        float speed = Vector3.Distance(position, lastPosition) / Mathf.Max(Time.deltaTime, 0.0001f);
+        lastPosition = position;
+
+        if (speed > 0.45f)
+            speedText.text = $"Move slower · {speed:F2} m/s";
+        else if (speed < 0.03f)
+            speedText.text = "Move around the object";
+        else
+            speedText.text = $"Good pace · {speed:F2} m/s";
+    }
+
+    private void UpdateCounter()
+    {
+        if (hudCounter != null)
+            hudCounter.text = $"Photos {currentPhotos} / {TARGET_PHOTOS}";
+        if (progressBar != null)
+            progressBar.value = currentPhotos;
+    }
+
+    private void FinishCapture()
     {
         isCapturing = false;
-        hudCounter.gameObject.SetActive(false);
-        progressBar.gameObject.SetActive(false);
-        speedText.gameObject.SetActive(false);
-        // Trigger mesh reconstruction (handled elsewhere) and notify user
-        Debug.Log("🎯 150 photos capturées !");
+        SetHud(false);
+        SetStatus($"Saved {currentPhotos} photos. Reconstruction is the next step.");
+        ScanCaptured?.Invoke(scanFolder);
+    }
+
+    private void SetHud(bool visible)
+    {
+        if (hudCounter != null) hudCounter.gameObject.SetActive(visible);
+        if (progressBar != null) progressBar.gameObject.SetActive(visible);
+        if (speedText != null) speedText.gameObject.SetActive(visible);
+    }
+
+    private void SetStatus(string message)
+    {
+        if (statusText != null)
+            statusText.text = message;
+        Debug.Log("MOAD 3D Scan: " + message);
     }
 }
