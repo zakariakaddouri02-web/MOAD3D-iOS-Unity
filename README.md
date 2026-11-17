@@ -23,11 +23,13 @@ The viewer parses OBJ vertex and face data and uses a simple shaded material. It
 ## Build with Codemagic
 
 1. Add this GitHub repository to Codemagic.
-2. In the Codemagic app's environment variable groups, create `unity_credentials` and add secret variables `UNITY_EMAIL`, `UNITY_PASSWORD`, and `UNITY_SERIAL` for a Unity license that can activate on a CI machine.
+2. In Codemagic, create the `unity_credentials` secret group with `UNITY_EMAIL`, `UNITY_PASSWORD`, and `UNITY_SERIAL` for a valid Unity Plus or Pro license. Codemagic's current Unity build guide requires Plus or Pro for cloud builds.
 3. Run the `ios-build` workflow from `codemagic.yaml`.
 4. Download `MOAD3D-unsigned.ipa` from build artifacts and sign/install it with your iOS sideloading workflow. An unsigned IPA is not an App Store or TestFlight release.
 
 The workflow uses Unity `2022.3.11f1` and produces an iOS device archive with code signing disabled. It has not yet been verified by a successful Codemagic run. To publish to TestFlight or the App Store, add App Store Connect signing credentials and a signed IPA workflow.
+
+If Unity activation stops with HTTP `401`, Codemagic has rejected the email/password credentials before it can generate the Xcode project. Check the Unity ID email/password and confirm the serial belongs to that account in the Codemagic secret group. The AltServer install step only applies after a successful IPA build.
 
 ## Local project
 
