@@ -11,7 +11,7 @@ import SwiftUI
 struct MOAD3DApp: App {
     @StateObject private var scanner = ScanViewModel()
 
-    var body: some Scene {
+    var body: some SwiftUI.Scene {
         WindowGroup {
             ScanScreen(scanner: scanner)
         }
